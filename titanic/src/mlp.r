@@ -1,68 +1,22 @@
 require(nnet)
-# require(tseriesChaos)
+source("src/cpp-routines.rcpp")
 
 # TODO
 # fhard <- function(net);
-
-# DONE
-# mlp.architecture <- function(input.length = 2, hidden.length = 2, 
-# 	output.length = 1, my.f = f, my.df_dnet = df_dnet);
-
-
-# TODO
-# time.series.prediction <- function(series, embedding.dimension, time.delay,
-# 	hidden.length = 4, train.set.size = 0.9, eta = 0.05, threshold = 1e-3);
-
-# TODO
-# lorenz.recursive <- function(embedding.dimension = 3, time.delay = 5, 
-# 	hidden.length = 5, train.set.size = 0.9, eta = 0.05, threshold = 0.017, 
-# 	plot.points = 50);
-
-# TODO
-# logistic.recursive <- function(embedding.dimension = 2, time.delay = 1, 
-# 	hidden.length = 5, train.set.size = 0.9, eta = 0.05, threshold = 1e-3, 
-# 	plot.points = 50);
 
 # Activation function
 sigmoid <- function(net){ return (1/(1+exp(-net))) }
 
 # Activation function derivative
-d_sigmoid <- function(net) { return (sigmoid(net) * (1-sigmoid(net))) }
+d_sigmoid <- function(net) { 
+	tmp = sigmoid(net)
+	return (tmp * (1-tmp))
+}
+
 
 mlp.upper.hidden.size <- function(input.size, output.size, n.samples, alpha=2){
 	return (floor(n.samples/alpha*(input.size + output.size)))
 }
-
-# mlp.create <- function(input.size, output.size, 
-# 					hidden.size = ceiling((input.size+output.size)/2),
-# 					activation.func = sigmoid, activation.df = d_sigmoid){
-
-# 	mlp = list()
-# 	mlp$layers = list()
-# 	mlp$f = activation.func
-# 	mlp$df = activation.df
-
-# 	# Create input-hidden and hidden-output layers as matrix with random weights
-# 	# Input size = 2   Hidden size = 3   Output size = 2
-	
-#     #       In1   In2   In3 (bias)             Hn1   Hn2   Hn3 (bias)
-#     #     |-----|-----|-----|                 |-----|-----|-----|
-#     # Hn1 |     |     |     |            Out1 |     |     |     |
-#     #     |-----|-----|-----|                 |-----|-----|-----|
-#     # Hn2 |     |     |     |            Out2 |     |     |     |
-#     #     |-----|-----|-----|                 |-----|-----|-----|
-#     # Hn3 |     |     |     |
-#     #     |-----|-----|-----|
-
-#     # Add 1 ncol so we can move the hyperplane's b (bias) parameter (a*x + b)
-# 	mlp$layers$hidden = matrix(runif(min=-1, max=1, n=hidden.size*(input.size+1)),
-# 					nrow=hidden.size, ncol=input.size+1)
-
-# 	mlp$layers$output = matrix(runif(min=-1, max=1, n=output.size*(hidden.size+1)),
-# 					nrow=output.size, ncol=hidden.size+1)
-
-# 	return (mlp)
-# }
 
 mlp.create <- function(input.size, output.size, 
 					hidden.size = ceiling((input.size+output.size)/2),
@@ -92,10 +46,10 @@ mlp.create <- function(input.size, output.size,
     #     |-----|-----|-----|            
 
 	# Add 1 to ncol so we can move the hyper plane's b (bias) parameter (a*x + b)
-	mlp$layers$hidden = matrix(runif(min=-1, max=1, n=hidden.size*(input.size+1)),
+	mlp$layers$hidden = matrix(runif(min=-0.5, max=0.5, n=hidden.size*(input.size+1)),
 					nrow=hidden.size, ncol=input.size+1)
 
-	mlp$layers$output = matrix(runif(min=-1, max=1, n=output.size*(hidden.size+1)),
+	mlp$layers$output = matrix(runif(min=-0.5, max=0.5, n=output.size*(hidden.size+1)),
 					nrow=output.size, ncol=hidden.size+1)
 
 	return (mlp)
@@ -120,25 +74,46 @@ mlp.forward <- function(mlp, input){
 	fwd$f.output = rep(0, mlp$size$output)
 	fwd$df.output = rep(0, mlp$size$output)
 
+	net.hidden = rep(0, mlp$size$hidden)
+	net.output = rep(0, mlp$size$output)
+
+	# Append a 1 input to the end for the bias parameter
+	tmp = c(input, 1)
+
 	# Forward Input -> Hidden layer
-	for(i in 1:mlp$size$hidden){
-		
-		# Append a 1 input to the end for the bias parameter
-		net.hidden = c(input, 1) %*% mlp$layers$hidden[i,]
-		
-		fwd$f.hidden[i] = mlp$f(net.hidden)	# Activate hidden layer perceptrons
-		fwd$df.hidden[i] = mlp$df(net.hidden) # Activation derivative
-	}
+	for(i in 1:mlp$size$hidden)
+		net.hidden[i] = mmult.cpp(tmp, mlp$layers$hidden[i,])
+		# net.hidden[i] = tmp %*% mlp$layers$hidden[i,]
+	
+	fwd$f.hidden = mlp$f(net.hidden)	# Activate hidden layer perceptrons
+	fwd$df.hidden = mlp$df(net.hidden)	# Activation derivative
+
+	# Append a 1 input to the end for the bias parameter
+	tmp = c(fwd$f.hidden, 1)
 
 	# Forward Hidden -> Output layer
-	for (i in 1:mlp$size$output){
-		
-		# Append a 1 input to the end for the bias parameter
-		net.output = c(fwd$f.hidden, 1) %*% mlp$layers$output[i,]
-		
-		fwd$f.output[i] = mlp$f(net.output) # Activate output layer perceptrons
-		fwd$df.output[i] = mlp$df(net.output) # Activation derivative
-	}
+	for (i in 1:mlp$size$output)
+		net.output[i] = tmp %*% mlp$layers$output[i,]
+
+	# # Append a 1 input to the end for the bias parameter
+	# tmp = c(input, 1)
+
+	# # Forward Input -> Hidden layer
+	# for(i in 1:mlp$size$hidden)
+	# 	net.hidden[i] = tmp %*% mlp$layers$hidden[i,]
+	
+	# fwd$f.hidden = mlp$f(net.hidden)	# Activate hidden layer perceptrons
+	# fwd$df.hidden = mlp$df(net.hidden)	# Activation derivative
+
+	# # Append a 1 input to the end for the bias parameter
+	# tmp = c(fwd$f.hidden, 1)
+
+	# # Forward Hidden -> Output layer
+	# for (i in 1:mlp$size$output)
+	# 	net.output[i] = tmp %*% mlp$layers$output[i,]
+
+	fwd$f.output = mlp$f(net.output) # Activate output layer perceptrons
+	fwd$df.output = mlp$df(net.output) # Activation derivative
 
 	return (fwd)
 }
@@ -171,14 +146,14 @@ mlp.train <- function(mlp, train.input, train.output, step=0.1, threshold=1e-2){
 			delta.output = as.vector(delta * fwd$df.output)
 
 			mlp$layers$output = mlp$layers$output + 
-				step*(delta.output %*% t(c(as.vector(fwd$f.hidden), 1)))
+				step*(tcrossprod(delta.output, c(as.vector(fwd$f.hidden), 1)))
 
 			# Calculate hidden layer delta and update its weights
 			delta.hidden = fwd$df.hidden * 
 				(delta.output %*% mlp$layers$output[,1:mlp$size$hidden])
 
 			mlp$layers$hidden = mlp$layers$hidden +
-				step*(as.vector(delta.hidden) %*% t(c(train.input[i,], 1)))
+				step*(tcrossprod(as.vector(delta.hidden), c(train.input[i,], 1)))
 		}
 
 		# Normalize the error
@@ -218,6 +193,7 @@ mlp.titanic.prepare.data <- function(dataset.path = "dataset/train.csv", train =
 	# Set all NA ages to median
 	dataset$Age[is.na(dataset$Age)] = 0 # Defaults all NA to 0
 	dataset$Age[dataset$Age == 0] = median(dataset$Age)
+	dataset$Age = dataset$Age/100 # Normalize Age - rarely will be above 100
 
 	# Add family size feature
 	dataset$FamSize = dataset$SibSp + dataset$Parch + 1
@@ -234,6 +210,8 @@ mlp.titanic.prepare.data <- function(dataset.path = "dataset/train.csv", train =
 	# But first find where there is no fare and set it to median
 	dataset$Fare[is.na(dataset$Fare)] = 0 # Defaults all NA to 0
 	dataset$Fare[dataset$Fare == 0] = median(dataset$Fare)
+	# Normalize fare price - prices are commonly log-normalized in economics
+	dataset$Fare = log(dataset$Fare) # e^NormalizedFare returns original Fare.
 
 	dataset$FarePerPerson = dataset$Fare/dataset$FamSize
 
@@ -308,9 +286,10 @@ mlp.titanic <- function(dataset.path = "dataset/train.csv"){
 	# TODO: Generate interation correlated variables maybe
 
 	size = mlp.upper.hidden.size(input.size=ncol(dataset)-1, output.size=1, 
-		n.samples=nrow(dataset), alpha=5)
+		n.samples=nrow(dataset), alpha=15)
 	mlp = mlp.create(input.size=ncol(dataset)-1, output.size=1, hidden.size=size)
-	mlp = mlp.train(mlp, dataset[2:ncol(dataset)-1], dataset$output, step=0.01)
+	mlp = mlp.train(mlp, dataset[2:ncol(dataset)-1], dataset$output, step=0.001, threshold=1e-2)
 
 	return (mlp)
 }
+

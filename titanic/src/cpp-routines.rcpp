@@ -1,0 +1,33 @@
+require(Rcpp)
+
+mvmult <- 'NumericMatrix mvmult( NumericMatrix m , NumericVector v , bool byrow = true ){
+	if(byrow)
+		if(!m.nrow() == v.size()) stop("Non-conformable arrays");
+	else
+		if(!m.ncol() == v.size()) stop("Non-conformable arrays");
+
+	NumericMatrix out(m) ;
+
+	if(byrow)
+		for(int j = 0; j < m.ncol(); j++)
+			for(int i = 0; i < m.nrow(); i++)
+				out(i,j) = m(i,j) * v[j];
+
+	else
+		for(int i = 0; i < m.nrow(); i++)
+			for(int j = 0; j < m.ncol(); j++)
+				out(i,j) = m(i,j) * v[i];
+
+	return out;
+}'
+cppFunction(mvmult)
+
+vvmult <- 'double vvmult(NumericVector v1, NumericVector v2){
+	
+	
+	double out=0;
+	
+	return out;
+}'
+cppFunction(vvmult)
+
