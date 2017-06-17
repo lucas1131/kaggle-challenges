@@ -1,8 +1,5 @@
 require(nnet)
-source("src/cpp-routines.rcpp")
-
-# TODO
-# fhard <- function(net);
+# source("src/cpp-routines.rcpp")
 
 # Activation function
 sigmoid <- function(net){ return (1/(1+exp(-net))) }
@@ -13,7 +10,12 @@ d_sigmoid <- function(net) {
 	return (tmp * (1-tmp))
 }
 
+mlp.accuracy <- function(mlp.results, test.validation){	
+	return (sum(mlp.results == test.validation)/nrow(test.validation))
+}
 
+
+# Estimates the upper bound for the hidden layer size that wont overfit the mlp
 mlp.upper.hidden.size <- function(input.size, output.size, n.samples, alpha=2){
 	return (floor(n.samples/alpha*(input.size + output.size)))
 }
@@ -55,20 +57,11 @@ mlp.create <- function(input.size, output.size,
 	return (mlp)
 }
 
+# Feed input forwad and get output
 mlp.forward <- function(mlp, input){
 	
-	input = as.matrix(input)
-
 	fwd = list()
 	
-	# R is an interpreted language, there is no real need to create an entire 
-	# vector just to initialize this, there is?
-	# But this may be faster if R can allocate everything at once, better than
-	# reallocating every time a new value is added. (I believe this is faster)
-
-	# See Section 4 in http://www.noamross.net/blog/2014/4/16/vectorization-in-r--why.html
-	# Its definely faster to create the vector first and them iterate though it
-
 	fwd$f.hidden = rep.int(0, mlp$size$hidden)
 	fwd$df.hidden = rep.int(0, mlp$size$hidden)
 	fwd$f.output = rep(0, mlp$size$output)
@@ -82,8 +75,7 @@ mlp.forward <- function(mlp, input){
 
 	# Forward Input -> Hidden layer
 	for(i in 1:mlp$size$hidden)
-		net.hidden[i] = mmult.cpp(tmp, mlp$layers$hidden[i,])
-		# net.hidden[i] = tmp %*% mlp$layers$hidden[i,]
+		net.hidden[i] = tmp %*% mlp$layers$hidden[i,]
 	
 	fwd$f.hidden = mlp$f(net.hidden)	# Activate hidden layer perceptrons
 	fwd$df.hidden = mlp$df(net.hidden)	# Activation derivative
@@ -94,23 +86,6 @@ mlp.forward <- function(mlp, input){
 	# Forward Hidden -> Output layer
 	for (i in 1:mlp$size$output)
 		net.output[i] = tmp %*% mlp$layers$output[i,]
-
-	# # Append a 1 input to the end for the bias parameter
-	# tmp = c(input, 1)
-
-	# # Forward Input -> Hidden layer
-	# for(i in 1:mlp$size$hidden)
-	# 	net.hidden[i] = tmp %*% mlp$layers$hidden[i,]
-	
-	# fwd$f.hidden = mlp$f(net.hidden)	# Activate hidden layer perceptrons
-	# fwd$df.hidden = mlp$df(net.hidden)	# Activation derivative
-
-	# # Append a 1 input to the end for the bias parameter
-	# tmp = c(fwd$f.hidden, 1)
-
-	# # Forward Hidden -> Output layer
-	# for (i in 1:mlp$size$output)
-	# 	net.output[i] = tmp %*% mlp$layers$output[i,]
 
 	fwd$f.output = mlp$f(net.output) # Activate output layer perceptrons
 	fwd$df.output = mlp$df(net.output) # Activation derivative
@@ -124,9 +99,6 @@ mlp.train <- function(mlp, train.input, train.output, step=0.1, threshold=1e-2){
 	error = threshold+1; # Just to enter the loop
 	train.input.size = nrow(train.input)
 
-	train.input = as.matrix(train.input)
-	train.output = as.matrix(train.output)
-
 	# Keep training until error is below acceptable threshold
 	while(error > threshold){
 
@@ -138,7 +110,7 @@ mlp.train <- function(mlp, train.input, train.output, step=0.1, threshold=1e-2){
 			fwd = mlp.forward(mlp, train.input[i,])
 
 			# Calculate delta from expected and achieved outputs
-			delta = train.output[i,] - fwd$f.output
+			delta = train.output[i] - fwd$f.output
 			error = error + sum(delta^2) # Squared error
 
 			# Feed result backwards (backpropagation)
@@ -264,8 +236,6 @@ mlp.titanic.prepare.data <- function(dataset.path = "dataset/train.csv", train =
 
 	dataset$Title = as.numeric(dataset$Title)
 	
-	# Discard PassengerId because this is just and id 
-	# dataset$PassengerId = NULL
 	# Discard Ticket
 	dataset$Ticket = NULL
 	# Discard Cabin NOTE: Maybe try to use the cabin's letter and set the rest do unknown
@@ -281,15 +251,44 @@ mlp.titanic.prepare.data <- function(dataset.path = "dataset/train.csv", train =
 
 mlp.titanic <- function(dataset.path = "dataset/train.csv"){
 
-	dataset.path = "dataset/train.csv"
-	dataset = mlp.titanic.prepare.data(dataset.path)
+	dataset = as.matrix(mlp.titanic.prepare.data(dataset.path))
 	# TODO: Generate interation correlated variables maybe
 
 	size = mlp.upper.hidden.size(input.size=ncol(dataset)-1, output.size=1, 
 		n.samples=nrow(dataset), alpha=15)
-	mlp = mlp.create(input.size=ncol(dataset)-1, output.size=1, hidden.size=size)
-	mlp = mlp.train(mlp, dataset[2:ncol(dataset)-1], dataset$output, step=0.001, threshold=1e-2)
+	mlp = mlp.create(input.size=ncol(dataset)-2, output.size=1, hidden.size=size)
+	mlp = mlp.train(mlp, dataset[,2:(ncol(dataset)-1)], dataset[,ncol(dataset)], step=0.001, threshold=0.15)
 
 	return (mlp)
 }
 
+mlp.titanic.test <- function(mlp, test.path = "dataset/test.csv", 
+					validation.path = "dataset/gender_submission.csv"){
+
+	testset = as.matrix(mlp.titanic.prepare.data(test.path), train=FALSE)
+	test.validate = as.matrix(read.csv(file=validation.path, header=TRUE))
+
+	test.size = nrow(testset)
+	testset.use = testset[, 2:ncol(testset)]
+
+	ret = list()
+	ret$results = rep(0, test.size)
+
+	for(i in 1:test.size){
+		tmp = mlp.forward(mlp, testset.use[i,])
+		ret$results[i] = tmp$f.output # We just want the output
+	}
+
+	ret$binary.results = mlp.titanic.discretize.results(results)
+	ret$accuracy = mlp.accuracy(ret$results, test.validate[,2])
+	cat("Accuracy: ", ret$accuracy, "\n")
+
+	return (ret)
+}
+
+# TODO: generalize this maybe
+mlp.titanic.discretize.results <- function(results){ 
+	ret = rep(0, length(results))
+	ret[results >= 0.5] = TRUE
+	return (ret)
+}
