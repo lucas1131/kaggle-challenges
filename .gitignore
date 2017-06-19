@@ -34,3 +34,4 @@ vignettes/*.pdf
 
 # mine
 aulas/*
+*profiling*
