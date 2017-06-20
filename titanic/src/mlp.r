@@ -114,7 +114,8 @@ mlp.forward <- function(mlp, input){
 # Train with backpropagation of errors
 mlp.train <- function(mlp, train.input, train.output, step=0.1, threshold=1e-2){
 
-	error = threshold+1; # Just to enter the loop
+	old.error = 100
+	error = threshold+1 # Just to enter the loop
 	train.input.size = nrow(train.input)
 
 	# g(mlp$layers$output, type="double", dup=FALSE)
@@ -157,6 +158,13 @@ mlp.train <- function(mlp, train.input, train.output, step=0.1, threshold=1e-2){
 
 		# Normalize the error
 		error = error/train.input.size
+
+		# Try to make an adaptative step so mlp wont get stuck
+		if(error > old.error){
+			step = step - (step/10) # Keep subtracting by 10% os the actual step
+			cat("Error got bigger, reducing step by 10%!\n")
+		}
+
 	    cat("Average squared error: ", error, "\n") # Faster than print
 	}
 

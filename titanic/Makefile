@@ -3,10 +3,9 @@
 all: main
 
 main: run
-
 # Run directives
 run:
-	R -f src/titanic.r
+	R -f src/titanic.r 
 
 .PHONY: list
 list: 

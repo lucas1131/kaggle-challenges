@@ -12,31 +12,54 @@
 require(nnet)
 source("src/mlp.r")
 
-mnist.pca <- function(dataset){
+mnist.pca <- function(dataset.path="dataset/train.csv", alpha=10, 
+	step=0.004, threshold=1e-1){
 
-	data.pca = summary(prcomp(dataset))
+	cat("Reading and preparing dataset...\n")
+	dataset = as.matrix(mnist.prepare.data(dataset.path))
+	output = mnist.prepare.output(dataset[,1])
+
+	cat("Done!\nApplying PCA...\n")
+	data.pca = summary(prcomp(dataset[,2:ncol(dataset)]))
+	cat("Done!\n")
 	size = length(dataset)
 	
 	trunc = tcrossprod(data.pca$x, data.pca$rotation)
 
+	cat("Finding relevant PC's...\n")
 	for(i in 1:size){
 		# Find i where the cumulative importance is >= 95%
 		if(data.pca$importance[3*i] >= 0.95){
 			break
 		}
 	}
-	
-	# Truncate to only the PC's whose cumulative importance is >= 95%
-	trunc = data.pca$x[,1:i]
 
-	return (trunc)
+	mlp$pcs = i
+
+	# Truncate to only the PC's whose cumulative importance is >= 95%
+	trunc = as.matrix(data.pca$x[,1:i])
+
+	cat("Done!\nEstimating hidden layer size...\n")
+	nfeatures = i
+	samples = nrow(trunc)
+	output.size = ncol(output)
+
+	hsize = mlp.upper.hidden.size(nfeatures, output.size, samples, alpha)
+
+	cat("Done!\nCreating mlp...\n")
+	mlp = mlp.create(nfeatures, output.size, hsize)
+	cat("Done!\nStart training!\n")
+	mlp = mlp.train(mlp, trunc, output, step=step, threshold=threshold)
+
+	return (mlp)
 }
 
 mnist.prepare.data <- function(dataset.path = "dataset/train.csv"){
 
 	# dataset = read.csv(dataset.path, header = TRUE)
-	dataset = read.csv("dataset/train.csv", header = TRUE)
+	dataset = read.csv(dataset.path, header = TRUE)
 
+	# Normalize data
 	dataset[,2:ncol(dataset)] = dataset[,2:ncol(dataset)]/255
 	
 	# dataset.pca = mnist.pca(dataset)
@@ -57,9 +80,10 @@ mnist.prepare.output <- function(raw.output){
 	return (output)
 }
 
-mnist <- function(dataset.path = "dataset/train.csv", alpha=10, 
+mnist <- function(dataset.path="dataset/train.csv", alpha=2, 
 	step=0.004, threshold=1e-1){
 
+	dataset.path = "dataset/train.csv"
 	dataset = as.matrix(mnist.prepare.data(dataset.path))
 	output = mnist.prepare.output(dataset[,1])
 
@@ -67,7 +91,7 @@ mnist <- function(dataset.path = "dataset/train.csv", alpha=10,
 	samples = nrow(dataset)
 	output.size = ncol(output)
 
-	hsize = mlp.upper.hidden.size(nfeatures, output.size, samples, 2)
+	hsize = mlp.upper.hidden.size(nfeatures, output.size, samples, alpha)
 
 	mlp = mlp.create(nfeatures, output.size, hsize)
 	mlp = mlp.train(mlp, dataset[,2:ncol(dataset)], output, step=step, threshold=threshold)
@@ -75,27 +99,23 @@ mnist <- function(dataset.path = "dataset/train.csv", alpha=10,
 	return (mlp)
 }
 
-mnist.test <- function(mlp, test.path = "dataset/test.csv", validation.path){
+mnist.test <- function(mlp, test.path="dataset/test.csv", 
+						output.path="results/result.csv"){
 
-	testset = as.matrix(mnist.prepare.data(test.path, train=FALSE))
-	test.validate = as.matrix(read.csv(file=validation.path, header=TRUE))
+	testset = as.matrix(mnist.prepare.data(test.path))
 
+	test.pca = summary(prcomp(testset))
+	# trunc = as.matrix(test.pca$x[,1:mlp$pcs])
+	trunc = as.matrix(test.pca$x[,1:154])
 	test.size = nrow(testset)
-	testset.use = testset[, 2:ncol(testset)]
-
-	ret = list()
-	ret$results = rep(0, test.size)
 
 	for(i in 1:test.size){
-		tmp = mlp.forward(mlp, testset.use[i,])
-		ret$results[i] = tmp$f.output # We just want the output
+		fwd = mlp.forward(mlp, trunc[i,])
+		results[i] = which.max(fwd$f.output)-1
 	}
 
-	ret$binary.results = mnist.discretize.results(results)
-	ret$accuracy = mlp.accuracy(ret$binary.results, test.validate[,2])
-	cat("Accuracy: ", ret$accuracy, "\n")
-
-	return (ret)
+	write.csv(cbind(seq(1:length(results)), results-1), file="results/test.csv", 
+		row.names=FALSE, col.names=c("ImageId", "Label"))
 }
 
 mnist.discretize.results <- function(results){ 
@@ -103,8 +123,3 @@ mnist.discretize.results <- function(results){
 	ret[results >= 0.5] = TRUE
 	return (ret)
 }
-
-
-# mlp = mnist(alpha=15, step=0.008, threshold=0.1)
-# cat("Finished running, saving mlp dump to \"mlp-dump/mlp.dat\"...")
-# save(mlp, file="mlp-dump/mlp.dat")
