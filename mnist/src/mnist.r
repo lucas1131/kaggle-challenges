@@ -24,8 +24,6 @@ mnist.pca <- function(dataset.path="dataset/train.csv", alpha=10,
 	cat("Done!\n")
 	size = length(dataset)
 	
-	trunc = tcrossprod(data.pca$x, data.pca$rotation)
-
 	cat("Finding relevant PC's...\n")
 	for(i in 1:size){
 		# Find i where the cumulative importance is >= 95%
@@ -33,7 +31,9 @@ mnist.pca <- function(dataset.path="dataset/train.csv", alpha=10,
 			break
 		}
 	}
-
+	
+	trunc = as.matrix(tcrossprod(data.pca$x[,1:154], data.pca$rotation[,1:154]))
+	
 	mlp$pcs = i
 
 	# Truncate to only the PC's whose cumulative importance is >= 95%
@@ -124,9 +124,8 @@ mnist.pca.test <- function(mlp, test.path="dataset/test.csv",
 
 	test.pca = summary(prcomp(testset))
 	
-	trunc = tcrossprod(test.pca$x, test.pca$rotation)
-	# trunc = as.matrix(test.pca$x[,1:mlp$pcs])
-	trunc = as.matrix(test.pca$x[,1:154])
+	trunc = as.matrix(tcrossprod(test.pca$x[,1:154], test.pca$rotation[,1:154]))
+	# trunc = as.matrix(tcrossprod(test.pca$x[,1:mlp$pcs], test.pca$rotation[,1:mlp$pcs]))
 
 	test.size = nrow(testset)
 
