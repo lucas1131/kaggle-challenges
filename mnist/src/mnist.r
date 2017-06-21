@@ -1,7 +1,7 @@
 ################################################################################
 #                                                                              #
-# Source file for Titanic: Machine Learning from Disaster Kaggle challenge     #
-# This file contains every routine to manipulate, train and test the Titanic   #
+# Source file for Digit Recognition: MNIST dataset                             #
+# This file contains every routine to manipulate, train and test the MNIST     #
 # dataset.                                                                     #
 #                                                                              #
 # Lucas Alexandre Soares 16/07/2017                                            #
@@ -100,26 +100,45 @@ mnist <- function(dataset.path="dataset/train.csv", alpha=2,
 }
 
 mnist.test <- function(mlp, test.path="dataset/test.csv", 
-						output.path="results/result.csv"){
+						output.path="results/result1.csv"){
+
+	testset = as.matrix(mnist.prepare.data(test.path))
+	test.size = nrow(testset)
+
+	Label = rep(-1, test.size)
+
+	for(i in 1:test.size){
+		# Transform results index back to labels
+		Label[i] = which.max(mlp.forward(mlp, testset[i,])$f.output)-1
+	}
+	# ImageId = 
+	write.csv(cbind(seq(1:length(Label)), Label), file=output.path, 
+		row.names=FALSE, col.names=c("ImageId", "Label"))
+}
+
+
+mnist.pca.test <- function(mlp, test.path="dataset/test.csv", 
+						output.path="results/pca-result.csv"){
 
 	testset = as.matrix(mnist.prepare.data(test.path))
 
 	test.pca = summary(prcomp(testset))
+	
+	trunc = tcrossprod(test.pca$x, test.pca$rotation)
 	# trunc = as.matrix(test.pca$x[,1:mlp$pcs])
 	trunc = as.matrix(test.pca$x[,1:154])
+
 	test.size = nrow(testset)
 
 	for(i in 1:test.size){
+		
+		# Test
 		fwd = mlp.forward(mlp, trunc[i,])
-		results[i] = which.max(fwd$f.output)-1
+		
+		# Transform results index back to labels
+		Label[i] = which.max(fwd$f.output)-1
 	}
-
-	write.csv(cbind(seq(1:length(results)), results-1), file="results/test.csv", 
+	# ImageId = 
+	write.csv(cbind(seq(1:length(Label)), Label), file=output.path, 
 		row.names=FALSE, col.names=c("ImageId", "Label"))
-}
-
-mnist.discretize.results <- function(results){ 
-	ret = rep(0, length(results))
-	ret[results >= 0.5] = TRUE
-	return (ret)
 }
